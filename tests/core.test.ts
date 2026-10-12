@@ -130,3 +130,33 @@ describe('save', () => {
     expect(h.applyOffline(30)).toBeNull();
   });
 });
+
+describe('aiming and merge targets', () => {
+  it('lists every matching tower as a merge target', () => {
+    const g = new Game(undefined, 1);
+    g.run.slots[0][0] = tower(g, 'arc', 2);
+    g.run.slots[0][1] = tower(g, 'arc', 2);
+    g.run.slots[1][4] = tower(g, 'arc', 2);
+    g.run.slots[1][5] = tower(g, 'arc', 3);
+    expect(g.mergeTargets({ ring: 0, index: 0 })).toEqual([{ ring: 0, index: 1 }, { ring: 1, index: 4 }]);
+  });
+
+  it('slows the rings while aiming', () => {
+    const g = new Game(undefined, 1);
+    const normal = g.orbitMult();
+    g.aiming = true;
+    expect(g.orbitMult()).toBeCloseTo(normal * 0.15);
+  });
+});
+
+describe('enemy scaling', () => {
+  it('speeds enemies up each wave, with Rush waves on every 5th non-boss wave', () => {
+    const g = new Game(undefined, 1);
+    expect(g.waveSpeedMult(1)).toBe(1);
+    expect(g.waveSpeedMult(51)).toBeCloseTo(1.5);
+    expect(g.waveSpeedMult(500)).toBeCloseTo(2.5);
+    expect(g.isRushWave(5)).toBe(true);
+    expect(g.isRushWave(10)).toBe(false);
+    expect(g.waveSpeedMult(5)).toBeCloseTo(1.04 * 1.4);
+  });
+});

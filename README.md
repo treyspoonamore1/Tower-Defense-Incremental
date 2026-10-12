@@ -32,9 +32,14 @@ Optional: with USB debugging on, `adb install -r core-breach.apk` works too.
 
 - **Build tower** places a random tower (Pulse, Arc or Frost) in the first empty slot.
 - Towers orbit and fire on their own. Every full orbit earns **Spin**; kills earn **Scrap**.
-- **Drag** a tower onto another with the same shape and colour to **merge** it into the next
-  tier (the number of sides = tier + 2). Drag to an empty slot to move it.
-- **Tap a tower** to see its stats or sell it. **Tap the core** for Overdrive (rings spin 3×).
+- **Merge** two towers with the same shape and colour into the next tier (the number of
+  sides = tier + 2). Rings slow to 15% speed while you aim, and there are three ways:
+  - **Drag** one onto the other. Drops snap to the nearest match, so near-misses still merge.
+  - **Tap** a tower, then tap one of its glowing matches.
+  - Tap a tower and press **Merge with match** on its card.
+- Drag a tower to an empty slot to move it. **Tap the core** for Overdrive (rings spin 3×).
+- Enemies get 1% faster every wave (up to 2.5×). Every 5th wave that isn't a boss wave is a
+  **Rush**: enemies are 40% faster and arrive twice as quickly.
 - Spend Scrap and Spin in **Upgrades**. Reach **wave 50** and **Collapse** for Cores, then buy
   permanent upgrades, a third ring, the Mortar and automation in the **Core** tab.
 - The game earns Scrap and Spin at half rate while closed (up to 8 hours).
@@ -93,7 +98,7 @@ for a Play Store release; set `SIGNING_STORE_FILE`, `SIGNING_STORE_PASSWORD`,
   on, tests headlessly, and makes a ~70 KB game.
 - Numbers use plain JavaScript doubles (fine up to 1e308, far beyond this prototype's range)
   rather than a `Big` type.
-- Boss HP is 20× wave HP rather than 30×, and enemies move about 30% faster, after
-  simulator tuning. The simulator reaches wave 50 at about 21 minutes and wave 10 at about 4.
+- Boss HP is 20× wave HP rather than 30×, enemies move about 30% faster and speed up 1% per
+  wave (the doc said 0.5%), and Rush waves are new, after playtesting and simulator tuning. The simulator reaches wave 50 at about 21 minutes and wave 10 at about 4.
 - Prototype content: 4 towers, 4 enemy types, Warden and Hive bosses, 8 run upgrades,
   11 Core tree nodes, 4 Collapse milestones and 20 achievements.

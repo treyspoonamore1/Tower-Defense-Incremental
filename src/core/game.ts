@@ -1,6 +1,6 @@
 import {
   ARENA, COLLAPSE_WAVE, CORE_NODES, ENEMIES, MILESTONES, NORMAL_ENEMIES, OFFLINE, OVERDRIVE, RINGS,
-  RUN_UPGRADES, TOWERS, TOWER_TIER_DAMAGE, TOWER_TIER_RANGE, WAVE,
+  RUN_UPGRADES, TOWERS, TOWER_TIER_DAMAGE, TOWER_TIER_RANGE, WAVE, AIM_ORBIT_MULT,
   type EnemyKind, type NodeDef, type TowerType, type UpgradeDef,
 } from './defs';
 import { ACHIEVEMENTS, ACHIEVEMENT_DAMAGE } from './achievements';
@@ -78,7 +78,7 @@ export type GameEvent =
   | { type: 'bossKill'; wave: number }
   | { type: 'breach'; toWave: number }
   | { type: 'achievement'; name: string }
-  | { type: 'wave'; wave: number }
+  | { type: 'wave'; wave: number; rush: boolean }
   | { type: 'collapse'; cores: number };
 
 export interface OfflineReport {
@@ -98,6 +98,8 @@ export class Game {
   effects: Effect[] = [];
   events: GameEvent[] = [];
   private breather = 0;
+  /** True while the player is aiming a merge; rings slow down so targets are easy to hit. */
+  aiming = false;
   private anyDead = false;
   private achievementTimer = 0;
 
@@ -201,6 +203,7 @@ export class Game {
   orbitMult(): number {
     let m = (1 + 0.08 * this.up('orbit')) * (1 + 0.1 * this.node('bearings'));
     if (this.run.overdriveTime > 0) m *= OVERDRIVE.speed;
+    if (this.aiming) m *= AIM_ORBIT_MULT;
     return m;
   }
 
@@ -238,8 +241,13 @@ export class Game {
     return Math.pow(WAVE.scrapGrowth, w - 1);
   }
 
+  isRushWave(w: number): boolean {
+    return w % WAVE.rushEvery === 0 && w % WAVE.bossEvery !== 0;
+  }
+
   waveSpeedMult(w: number): number {
-    return Math.min(1 + 0.005 * (w - 1), 2);
+    const base = Math.min(1 + WAVE.speedPerWave * (w - 1), WAVE.maxSpeedMult);
+    return this.isRushWave(w) ? base * WAVE.rushSpeed : base;
   }
 
   buildCost(builds = this.run.builds): number {
@@ -309,6 +317,15 @@ export class Game {
     let built = 0;
     while ((count === 0 || built < count) && this.build()) built++;
     return built;
+  }
+
+  /** Every tower that the tower at `from` can merge into. */
+  mergeTargets(from: SlotRef): SlotRef[] {
+    const out: SlotRef[] = [];
+    this.run.slots.forEach((ring, r) => ring.forEach((_, i) => {
+      if (this.canMerge(from, { ring: r, index: i })) out.push({ ring: r, index: i });
+    }));
+    return out;
   }
 
   canMerge(a: SlotRef, b: SlotRef): boolean {
@@ -497,9 +514,10 @@ export class Game {
     }
     if (w % WAVE.bossEvery === 0) queue.push((w / WAVE.bossEvery) % 2 === 1 ? 'warden' : 'hive');
     run.toSpawn = queue;
-    run.spawnInterval = WAVE.spawnDuration / queue.length;
+    const rush = this.isRushWave(w);
+    run.spawnInterval = (rush ? WAVE.rushSpawnDuration : WAVE.spawnDuration) / queue.length;
     run.spawnTimer = 0;
-    this.events.push({ type: 'wave', wave: w });
+    this.events.push({ type: 'wave', wave: w, rush });
   }
 
   private spawn(kind: EnemyKind, r = ARENA.spawnRadius, theta = this.rng.next() * TAU): Enemy {

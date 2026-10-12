@@ -14,6 +14,7 @@ export interface UiHost {
   hardReset(): void;
   setSpeed(mult: number): void;
   speed: number;
+  haptic(pattern: number | number[]): void;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -79,7 +80,7 @@ export class Ui {
       <div class="desc" style="font-size:12.5px;color:var(--muted)">
         Towers orbit the core and fire on their own. Drag a tower onto another of the same
         <b>shape and colour</b> to merge them into the next tier. Drag a tower to an empty slot to move it.
-        Tap a tower for details or to sell it. Tap the core for Overdrive. Each full orbit earns Spin.
+        Or tap a tower, then tap a glowing match. Rings slow down while you aim. Tap the core for Overdrive. Each full orbit earns Spin.
       </div>`;
     $('buildBtn').addEventListener('click', () => {
       const bulk = this.game.milestone(3) ? this.game.meta.settings.bulk : 1;
@@ -352,7 +353,7 @@ export class Ui {
     let tutorial = '';
     if (m.collapses === 0) {
       if (g.run.builds === 0 && m.totalMerges === 0) tutorial = 'Tap <b>Build tower</b> below. Towers orbit the core and shoot on their own.';
-      else if (m.totalMerges === 0 && g.findMergePair()) tutorial = 'Drag a tower onto one with the <b>same shape and colour</b> to merge them.';
+      else if (m.totalMerges === 0 && g.findMergePair()) tutorial = 'Drag a tower onto one with the <b>same shape and colour</b>, or tap one and then tap a glowing match.';
       else if (m.totalMerges === 0) tutorial = 'Keep building. When two towers match, drag one onto the other to merge.';
       else if (m.overdrives === 0 && g.run.wave >= 4) tutorial = 'Tap the glowing <b>core</b> for Overdrive: rings spin 3× faster for 10 s.';
       else if (Object.keys(g.run.upgrades).length === 0 && g.run.wave >= 6) tutorial = 'Spend Scrap and Spin in the <b>Upgrades</b> tab.';
@@ -384,17 +385,11 @@ export class Ui {
     if (key !== this.cardKey) {
       this.cardKey = key;
       card.innerHTML = `
-        <h3><span style="color:${def.color}">●</span>${def.name} ${roman(t.tier)}<button class="close" id="cardClose">×</button></h3>
-        <div class="role">${def.role} · Ring ${ref.ring + 1}</div>
-        <div class="stats">
-          <div><small>Damage</small><b id="cDmg"></b></div>
-          <div><small>DPS</small><b id="cDps"></b></div>
-          <div><small>Range</small><b>${Math.round(this.game.towerRange(t))}</b></div>
-          <div><small>Kills</small><b id="cKills"></b></div>
-        </div>
-        <div class="perk ${t.tier >= 5 ? 'on' : ''}">Tier V: ${def.perk5}</div>
-        <div class="perk ${t.tier >= 10 ? 'on' : ''}">Tier X: ${def.perk10}</div>
+        <h3><span style="color:${def.color}">●</span>${def.name} ${roman(t.tier)}<span class="role">${def.role} · Ring ${ref.ring + 1}</span><button class="close" id="cardClose">×</button></h3>
+        <div class="statline">Dmg <b id="cDmg"></b> · DPS <b id="cDps"></b> · Range <b>${Math.round(this.game.towerRange(t))}</b> · Kills <b id="cKills"></b></div>
+        <div class="perk ${t.tier >= 5 ? 'on' : ''}">V: ${def.perk5}${t.tier >= 5 ? ' ✓' : ''} · X: ${def.perk10}${t.tier >= 10 ? ' ✓' : ''}</div>
         <div class="row">
+          <button class="btn small primary" id="cardMerge"></button>
           <button class="btn small danger" id="cardSell"></button>
         </div>`;
       $('cardClose').addEventListener('click', () => this.host.select(null));
@@ -402,10 +397,23 @@ export class Ui {
         const r = this.host.selected;
         if (r) { this.game.sell(r); this.host.select(null); }
       });
+      $('cardMerge').addEventListener('click', () => {
+        const r = this.host.selected;
+        if (!r) return;
+        const into = this.game.mergeTargets(r)[0];
+        if (into && this.game.merge(r, into)) {
+          this.host.haptic(18);
+          this.host.select(this.game.mergeTargets(into).length > 0 ? into : null);
+        }
+      });
     }
     $('cDmg').textContent = this.n(this.game.towerDamage(t));
     $('cDps').textContent = this.n(this.game.towerDps(t));
     $('cKills').textContent = this.n(t.kills);
+    const matches = this.game.mergeTargets(ref).length;
+    const mergeBtn = $<HTMLButtonElement>('cardMerge');
+    mergeBtn.disabled = matches === 0;
+    mergeBtn.textContent = t.tier >= 10 ? 'Max tier' : matches ? `Merge with match (${matches})` : 'No match yet';
     $('cardSell').innerHTML = `Sell for <span class="cost scrap">${this.n(this.game.sellValue(ref))}</span>`;
   }
 

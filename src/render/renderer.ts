@@ -151,12 +151,23 @@ export class Renderer {
 
     this.drawCore(game);
     this.drawEnemies(game);
-    this.drawTowers(game, ui, dragTower);
+    this.drawTowers(game, ui);
     this.drawProjectiles(game);
     this.drawEffects(game, reduceMotion);
 
-    // Dragged tower follows the finger
+    // Dragged tower follows the finger; a line shows which match it will snap into.
     if (ui.drag && dragTower) {
+      if (ui.hover && game.tower(ui.hover)) {
+        const p = game.slotPos(ui.hover.ring, ui.hover.index);
+        ctx.beginPath();
+        ctx.moveTo(ui.drag.x, ui.drag.y);
+        ctx.lineTo(view.sx(p.x), view.sy(p.y));
+        ctx.strokeStyle = 'rgba(160, 255, 200, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
       const r = this.towerRadius() * 1.15;
       const spr = towerSprite(dragTower.type, dragTower.tier, r * this.dpr);
       const size = spr.width / this.dpr;
@@ -268,9 +279,12 @@ export class Renderer {
     }
   }
 
-  private drawTowers(game: Game, ui: UiState, dragTower: ReturnType<Game['tower']>): void {
+  private drawTowers(game: Game, ui: UiState): void {
     const { ctx, view } = this;
     const r = this.towerRadius();
+    // Matches glow for the tower being dragged, or for the selected tower (tap a glowing one to merge).
+    const source = ui.drag?.from ?? ui.selected;
+    const sourceTower = source ? game.tower(source) : null;
     for (let ring = 0; ring < RINGS.length; ring++) {
       const slots = game.run.slots[ring];
       for (let i = 0; i < slots.length; i++) {
@@ -280,7 +294,15 @@ export class Renderer {
         const x = view.sx(p.x);
         const y = view.sy(p.y);
         const dragging = ui.drag && ui.drag.from.ring === ring && ui.drag.from.index === i;
-        const match = dragTower && !dragging && dragTower.type === t.type && dragTower.tier === t.tier && t.tier < ARENA.maxTier;
+        const isSource = source && source.ring === ring && source.index === i;
+        const match = sourceTower && !isSource && sourceTower.type === t.type && sourceTower.tier === t.tier && t.tier < ARENA.maxTier;
+        if (isSource && !ui.drag) {
+          ctx.beginPath();
+          ctx.arc(x, y, r * 1.5, 0, TAU);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
         if (match) {
           const hover = ui.hover && ui.hover.ring === ring && ui.hover.index === i;
           ctx.beginPath();

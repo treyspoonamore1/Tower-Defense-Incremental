@@ -70,6 +70,7 @@ class App implements UiHost {
   private frame(now: number): void {
     const dt = Math.min(0.25, (now - this.last) / 1000);
     this.last = now;
+    this.game.aiming = this.input.holding || this.uiState.selected !== null;
     this.game.update(dt * this.speed);
     this.handleEvents();
     if (this.uiState.selected && !this.game.tower(this.uiState.selected)) this.uiState.selected = null;
@@ -107,6 +108,7 @@ class App implements UiHost {
           break;
         case 'wave':
           if (e.wave % 10 === 0) this.ui.toast(`Wave ${e.wave}: boss incoming`, 'bad');
+          else if (e.rush) this.ui.toast(`Wave ${e.wave}: Rush! Faster enemies`, 'bad');
           break;
         case 'collapse':
           this.ui.toast(`Collapsed for ${e.cores} Cores`, 'good');

@@ -92,7 +92,15 @@ export const WAVE = {
   spawnDuration: 8,
   maxDuration: 22,
   bossEvery: 10,
+  speedPerWave: 0.01, // +1% enemy speed per wave...
+  maxSpeedMult: 2.5, // ...up to 2.5x
+  rushEvery: 5, // every 5th wave that is not a boss wave is a Rush wave
+  rushSpeed: 1.4,
+  rushSpawnDuration: 4,
 };
+
+/** Ring speed while the player is aiming a merge (holding or has selected a tower). */
+export const AIM_ORBIT_MULT = 0.15;
 
 export interface UpgradeDef {
   id: string;
