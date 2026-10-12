@@ -1,0 +1,33 @@
+{
+  "name": "core-breach",
+  "version": "0.1.0",
+  "description": "Core Breach: an orbit-defense incremental game for Android",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "dev": "node tools/build.mjs --watch",
+    "typecheck": "tsc",
+    "test": "vitest run",
+    "sim": "tsx tools/sim.ts",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/treyspoonamore1/tower-defense-incremental.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/treyspoonamore1/tower-defense-incremental/issues"
+  },
+  "homepage": "https://github.com/treyspoonamore1/tower-defense-incremental#readme",
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.24.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "private": true,
+  "type": "module"
+}

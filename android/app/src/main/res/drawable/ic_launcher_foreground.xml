@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Core with two orbit rings and three towers, in the game's neon palette. 108dp adaptive canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:strokeColor="#593EE8FF" android:strokeWidth="1.5" android:fillColor="#00000000"
+        android:pathData="M54,32a22,22 0 1,0 0.01,0z" />
+    <path android:strokeColor="#3E78C8FF" android:strokeWidth="1.2" android:fillColor="#00000000"
+        android:pathData="M54,22a32,32 0 1,0 0.01,0z" />
+    <path android:fillColor="#7CF6FF" android:pathData="M54,46a8,8 0 1,0 0.01,0z" />
+    <path android:fillColor="#E9FDFF" android:pathData="M54,49a5,5 0 1,0 0.01,0z" />
+    <path android:strokeColor="#3EE8FF" android:strokeWidth="2" android:fillColor="#0B1230"
+        android:pathData="M76,48 L82,58 L70,58 Z" />
+    <path android:strokeColor="#FFE14A" android:strokeWidth="2" android:fillColor="#0B1230"
+        android:pathData="M30,64 L37,64 L39,71 L33.5,75 L28,71 Z" />
+    <path android:strokeColor="#FF9A3C" android:strokeWidth="2" android:fillColor="#0B1230"
+        android:pathData="M46,20 L54,20 L54,28 L46,28 Z" />
+</vector>
