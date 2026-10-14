@@ -53,6 +53,8 @@ export interface Settings {
   bulk: 1 | 5 | 0; // 0 = max
   reduceMotion: boolean;
   haptics: boolean;
+  sound: boolean;
+  damageNumbers: boolean;
   debug: boolean;
 }
 
@@ -140,6 +142,8 @@ export function newMeta(): MetaState {
       bulk: 1,
       reduceMotion: false,
       haptics: true,
+      sound: true,
+      damageNumbers: false,
       debug: false,
     },
   };

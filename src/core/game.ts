@@ -1,6 +1,6 @@
 import {
   ARENA, COLLAPSE_WAVE, CORE_NODES, ENEMIES, MILESTONES, NORMAL_ENEMIES, OFFLINE, OVERDRIVE, RINGS,
-  RUN_UPGRADES, TOWERS, TOWER_TIER_DAMAGE, TOWER_TIER_RANGE, WAVE, AIM_ORBIT_MULT,
+  RUN_UPGRADES, TOWERS, TOWER_TIER_DAMAGE, TOWER_TIER_RANGE, WAVE, AIM_ORBIT_MULT, FLOW,
   type EnemyKind, type NodeDef, type TowerType, type UpgradeDef,
 } from './defs';
 import { ACHIEVEMENTS, ACHIEVEMENT_DAMAGE } from './achievements';
@@ -75,11 +75,15 @@ export type Effect =
 export type GameEvent =
   | { type: 'merge'; tier: number }
   | { type: 'build' }
+  | { type: 'overdrive' }
   | { type: 'bossKill'; wave: number }
   | { type: 'breach'; toWave: number }
   | { type: 'achievement'; name: string }
   | { type: 'wave'; wave: number; rush: boolean }
-  | { type: 'collapse'; cores: number };
+  | { type: 'collapse'; cores: number }
+  | { type: 'kill'; x: number; y: number; boss: boolean; scrap: number }
+  | { type: 'fire'; tower: TowerType }
+  | { type: 'hit'; x: number; y: number; amount: number };
 
 export interface OfflineReport {
   seconds: number;
@@ -98,6 +102,12 @@ export class Game {
   effects: Effect[] = [];
   events: GameEvent[] = [];
   private breather = 0;
+  private waveSize = 1;
+  /** Kill chain: kills within FLOW.chainWindow of each other build a Scrap bonus. */
+  chain = 0;
+  chainTimer = 0;
+  /** When true, hits emit 'hit' events for floating damage numbers. */
+  emitHits = false;
   /** True while the player is aiming a merge; rings slow down so targets are easy to hit. */
   aiming = false;
   private anyDead = false;
@@ -267,6 +277,35 @@ export class Game {
     return Math.floor(10 * Math.pow(wave / COLLAPSE_WAVE, 3));
   }
 
+  /** Game-speed multiplier for replaying early waves after a Collapse. */
+  catchUpMult(): number {
+    if (this.meta.collapses < 1) return 1;
+    if (this.run.wave >= this.meta.bestWave * FLOW.catchUpBelow) return 1;
+    return Math.min(FLOW.catchUpMax, FLOW.catchUpBase + FLOW.catchUpPerCollapse * (this.meta.collapses - 1));
+  }
+
+  waveCount(w: number): number {
+    return Math.min(10 + Math.floor(w / 3), 40);
+  }
+
+  /** The wave a new run starts on, from Head Start (never past half your best wave). */
+  headStartWave(): number {
+    const level = this.node('headstart');
+    if (!level) return 1;
+    return Math.max(1, Math.min(1 + 10 * level, Math.floor(this.meta.bestWave * 0.5)));
+  }
+
+  /** Scrap the skipped waves would have paid. */
+  headStartScrap(start: number): number {
+    let total = 0;
+    for (let w = 1; w < start; w++) total += this.waveCount(w) * this.waveScrap(w);
+    return total * this.scrapMult();
+  }
+
+  chainBonus(): number {
+    return Math.min(FLOW.chainBonusMax, this.chain * FLOW.chainBonusPer);
+  }
+
   milestone(collapses: number): boolean {
     return this.meta.collapses >= collapses;
   }
@@ -429,6 +468,7 @@ export class Game {
     this.run.overdriveTime = this.node('overcharge') > 0 ? OVERDRIVE.overchargedDuration : OVERDRIVE.duration;
     this.run.overdriveCooldown = OVERDRIVE.cooldown;
     this.meta.overdrives++;
+    this.events.push({ type: 'overdrive' });
     this.effects.push({ kind: 'ring', x: 0, y: 0, radius: 400, color: '#7cf6ff', t: 0, life: 0.6 });
     return true;
   }
@@ -449,6 +489,7 @@ export class Game {
     }
     this.run = newRun();
     this.run.upgrades = keptSpin;
+    this.chain = 0;
     this.enemies = [];
     this.projectiles = [];
     this.burns = [];
@@ -471,10 +512,20 @@ export class Game {
   private startRun(): void {
     if (this.milestone(1)) this.run.scrap = 100;
     if (this.milestone(5)) {
-      const tower: Tower = { id: this.nextId++, type: this.rng.pick(this.unlockedTypes()), tier: 3, invested: 0, cooldown: 0, shots: 0, kills: 0 };
-      this.run.slots[0][0] = tower;
+      // Starter kit: more towers with more Collapses, stronger with a higher best tier.
+      const count = Math.min(4, 1 + Math.floor((this.meta.collapses - 5) / 5));
+      const tier = Math.max(3, Math.min(8, Math.floor(this.meta.highestTier / 2) + 1));
+      for (let i = 0; i < count; i++) {
+        const tower: Tower = { id: this.nextId++, type: this.rng.pick(this.unlockedTypes()), tier, invested: 0, cooldown: 0, shots: 0, kills: 0 };
+        this.run.slots[0][i] = tower;
+      }
     }
-    this.startWave(1);
+    const start = this.headStartWave();
+    if (start > 1) {
+      this.run.scrap += this.headStartScrap(start);
+      this.run.lastBossCleared = Math.floor((start - 1) / WAVE.bossEvery) * WAVE.bossEvery;
+    }
+    this.startWave(start);
   }
 
   // ---------- Waves ----------
@@ -487,7 +538,7 @@ export class Game {
     run.waveTime = 0;
     run.waveRevs = 0;
     const queue: EnemyKind[] = [];
-    const n = Math.min(10 + Math.floor(w / 3), 40);
+    const n = this.waveCount(w);
     const weights: [EnemyKind, number][] = NORMAL_ENEMIES.map((k) => {
       const def = ENEMIES[k];
       if (w < def.firstWave) return [k, 0];
@@ -517,6 +568,7 @@ export class Game {
     const rush = this.isRushWave(w);
     run.spawnInterval = (rush ? WAVE.rushSpawnDuration : WAVE.spawnDuration) / queue.length;
     run.spawnTimer = 0;
+    this.waveSize = queue.length;
     this.events.push({ type: 'wave', wave: w, rush });
   }
 
@@ -556,8 +608,9 @@ export class Game {
   // ---------- Simulation ----------
 
   /** Advances the game by `dt` seconds in fixed steps. */
+  /** Advances the game by `dt` real seconds in fixed steps (faster during Catch-up). */
   update(dt: number): void {
-    let left = dt;
+    let left = dt * this.catchUpMult();
     while (left > 1e-9) {
       const step = Math.min(STEP, left);
       this.step(step);
@@ -659,17 +712,34 @@ export class Game {
         run.spawnTimer += run.spawnInterval;
       }
     }
-    const cleared = run.toSpawn.length === 0 && this.enemies.length === 0;
-    if (cleared) this.breather += dt;
+    // The next wave starts once spawning is done and only stragglers remain (never while a boss lives).
+    const spawned = run.toSpawn.length === 0;
+    const cleared = spawned && this.enemies.length === 0;
+    const stragglers = spawned && !this.enemies.some((e) => e.boss)
+      && this.enemies.length <= Math.max(2, Math.ceil(this.waveSize * FLOW.overlapShare));
+    if (stragglers) this.breather += dt;
     else this.breather = 0;
-    if ((cleared && this.breather >= 1.2) || run.waveTime >= WAVE.maxDuration) {
+    const ready = cleared ? this.breather >= FLOW.clearDelay : stragglers && this.breather >= FLOW.overlapDelay;
+    if (ready || run.waveTime >= WAVE.maxDuration) {
       this.breather = 0;
       this.nextWave();
     }
   }
 
+  /** Enemies sprint across the empty outer arena until they near the outermost tower ring. */
+  sprintRadius(): number {
+    let outer = RINGS[0].radius;
+    for (let ring = 0; ring < RINGS.length; ring++) if (this.ringOpen(ring)) outer = RINGS[ring].radius;
+    return outer + FLOW.sprintMargin;
+  }
+
   private updateEnemies(dt: number): void {
     const run = this.run;
+    const sprintRadius = this.sprintRadius();
+    if (this.chainTimer > 0) {
+      this.chainTimer -= dt;
+      if (this.chainTimer <= 0) this.chain = 0;
+    }
     const t = run.time;
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
@@ -678,6 +748,7 @@ export class Game {
       let mult = 1;
       if (t < e.frozenUntil) mult = 0;
       else if (t < e.slowUntil) mult = e.slowFactor;
+      if (e.r > sprintRadius) mult *= FLOW.sprintMult;
       const k = e.spiral;
       const vr = (e.speed * mult) / Math.sqrt(1 + (e.r * k) * (e.r * k));
       e.r -= vr * dt;
@@ -744,6 +815,7 @@ export class Game {
         if (!target) { t.cooldown = 0; continue; }
         t.cooldown += 1 / TOWERS[t.type].rate;
         t.shots++;
+        this.events.push({ type: 'fire', tower: t.type });
         this.fire(t, p.x, p.y, range, target, this.towerDamage(t, dmgMult));
       }
     }
@@ -886,7 +958,10 @@ export class Game {
     if (e.kind === 'shielded' && !ignoreShield && e.hp > e.maxHp * 0.5) amount *= 0.25;
     if (this.run.time < e.vulnUntil) amount *= 1.5;
     e.hp -= amount;
-    if (!quiet) e.hitFlash = 0.08;
+    if (!quiet) {
+      e.hitFlash = 0.08;
+      if (this.emitHits) this.events.push({ type: 'hit', x: e.x, y: e.y, amount });
+    }
     if (e.hp <= 0) {
       this.kill(e, source);
       return true;
@@ -896,7 +971,10 @@ export class Game {
 
   private kill(e: Enemy, source: Tower | null): void {
     this.anyDead = true;
-    const scrap = e.scrap * this.scrapMult();
+    this.chain++;
+    this.chainTimer = FLOW.chainWindow;
+    const scrap = e.scrap * this.scrapMult() * (1 + this.chainBonus());
+    this.events.push({ type: 'kill', x: e.x, y: e.y, boss: e.boss, scrap });
     this.run.scrap += scrap;
     this.run.scrapEarned += scrap;
     this.run.kills++;

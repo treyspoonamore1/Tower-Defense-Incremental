@@ -24,7 +24,9 @@ const s = game.meta.settings;
 s.autoBuild = s.autoMerge = s.autoUpgrade = true;
 
 const marks = new Map<string, number>();
-const mark = (key: string) => { if (!marks.has(key)) marks.set(key, game.meta.totalTime); };
+// Real (wall-clock) seconds. Game time runs faster than this during Catch-up.
+let now = 0;
+const mark = (key: string) => { if (!marks.has(key)) marks.set(key, now); };
 
 /** What an engaged player does each second: build, merge, upgrade, Overdrive. */
 function playerTick(): void {
@@ -50,32 +52,36 @@ function buyNodes(): void {
 }
 
 console.log(`seed ${seed}, target ${collapses} Collapses`);
-console.log('collapse | run time | best wave | cores gained | total time');
+console.log('collapse | run time | to wave 50 | best wave | cores gained | total time');
+let reach50 = -1;
 let best = 0;
 let lastProgress = 0;
 let runStart = 0;
 let done = 0;
-while (done < collapses && game.meta.totalTime < maxHours * 3600) {
-  for (let i = 0; i < 30; i++) game.step(1 / 30);
+while (done < collapses && now < maxHours * 3600) {
+  game.update(1);
+  now += 1;
   game.events.length = 0;
   playerTick();
   const w = game.run.maxWave;
   if (w >= 10 && game.run.lastBossCleared >= 10) mark('first boss (wave 10)');
   if (w >= 50) mark('wave 50');
+  if (w >= 50 && reach50 < 0) reach50 = now - runStart;
   if (w >= 100) mark('wave 100');
-  if (w > best) { best = w; lastProgress = game.meta.totalTime; }
-  const stalled = game.meta.totalTime - lastProgress > stallLimit;
+  if (w > best) { best = w; lastProgress = now; }
+  const stalled = now - lastProgress > stallLimit;
   if (stalled && game.canCollapse()) {
-    const runTime = game.meta.totalTime - runStart;
+    const runTime = now - runStart;
     const gain = game.collapse();
     done++;
     if (done === 1) mark('first Collapse');
-    console.log(`${String(done).padStart(8)} | ${fmtTime(runTime).padStart(8)} | ${String(best).padStart(9)} | ${String(gain).padStart(12)} | ${fmtTime(game.meta.totalTime)}`);
+    console.log(`${String(done).padStart(8)} | ${fmtTime(runTime).padStart(8)} | ${fmtTime(reach50).padStart(10)} | ${String(best).padStart(9)} | ${String(gain).padStart(12)} | ${fmtTime(now)}`);
     buyNodes();
     best = 0;
-    lastProgress = game.meta.totalTime;
-    runStart = game.meta.totalTime;
-  } else if (stalled && game.meta.totalTime - lastProgress > stallLimit * 4) {
+    lastProgress = now;
+    runStart = now;
+    reach50 = -1;
+  } else if (stalled && now - lastProgress > stallLimit * 4) {
     console.log(`stuck at wave ${best} without reaching a Collapse`);
     break;
   }

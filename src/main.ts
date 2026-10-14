@@ -1,4 +1,5 @@
-import { roman } from './core/format';
+import { Sfx } from './audio/sfx';
+import { fmt, roman } from './core/format';
 import { Game } from './core/game';
 import type { SaveData, SlotRef } from './core/state';
 import { Renderer, type UiState } from './render/renderer';
@@ -15,6 +16,7 @@ class App implements UiHost {
   ui: Ui;
   uiState: UiState = { drag: null, selected: null, hover: null };
   speed = 1;
+  sfx = new Sfx();
   private last = performance.now();
   private uiTimer = 0;
   private saveTimer = 0;
@@ -32,14 +34,23 @@ class App implements UiHost {
       select: (ref) => this.select(ref),
       haptic: (p) => this.haptic(p),
     });
-    new ResizeObserver(() => this.renderer.resize()).observe(canvas);
+    new ResizeObserver(() => { this.renderer.resize(); this.updatePickupTarget(); }).observe(canvas);
     this.renderer.resize();
+    this.updatePickupTarget();
+    this.renderer.onPickup = () => this.onPickup();
+    // Audio can only start after a user gesture.
+    const unlock = () => { if (this.game.meta.settings.sound) this.sfx.unlock(); };
+    window.addEventListener('pointerdown', unlock, { capture: true });
+    document.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('button')) this.sfx.click();
+    }, { capture: true });
     if (loaded.offline > 0) this.grantOffline(loaded.offline);
 
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         this.hiddenAt = Date.now();
         this.save();
+        this.sfx.suspend();
       } else {
         const away = (Date.now() - this.hiddenAt) / 1000;
         this.last = performance.now();
@@ -53,6 +64,23 @@ class App implements UiHost {
 
   get selected(): SlotRef | null {
     return this.uiState.selected;
+  }
+
+  private bumpAt = 0;
+
+  /** Points Scrap pickups at the Scrap counter, which sits above the canvas. */
+  private updatePickupTarget(): void {
+    const canvas = document.getElementById('cv')!.getBoundingClientRect();
+    const counter = document.getElementById('scrap')!.getBoundingClientRect();
+    this.renderer.pickupTarget = { x: counter.left + counter.width / 2 - canvas.left, y: counter.top + counter.height / 2 - canvas.top };
+  }
+
+  private onPickup(): void {
+    this.sfx.pickup();
+    const now = performance.now();
+    if (now - this.bumpAt < 90) return;
+    this.bumpAt = now;
+    document.getElementById('scrap')!.animate([{ transform: 'scale(1.25)', color: '#ffc857' }, { transform: 'scale(1)' }], { duration: 160 });
   }
 
   select(ref: SlotRef | null): void {
@@ -71,6 +99,8 @@ class App implements UiHost {
     const dt = Math.min(0.25, (now - this.last) / 1000);
     this.last = now;
     this.game.aiming = this.input.holding || this.uiState.selected !== null;
+    this.game.emitHits = this.game.meta.settings.damageNumbers;
+    this.sfx.enabled = this.game.meta.settings.sound;
     this.game.update(dt * this.speed);
     this.handleEvents();
     if (this.uiState.selected && !this.game.tower(this.uiState.selected)) this.uiState.selected = null;
@@ -90,28 +120,67 @@ class App implements UiHost {
   }
 
   private handleEvents(): void {
+    const r = this.renderer;
+    const calm = this.game.meta.settings.reduceMotion;
     for (const e of this.game.events) {
       switch (e.type) {
+        case 'fire':
+          this.sfx.fire(e.tower);
+          break;
+        case 'kill':
+          this.sfx.kill(e.boss);
+          r.addPickup(e.x, e.y);
+          if (e.boss) for (let i = 0; i < 7; i++) r.addPickup(e.x + (Math.random() - 0.5) * 60, e.y + (Math.random() - 0.5) * 60);
+          break;
+        case 'hit':
+          r.addText(e.x, e.y, fmt(e.amount, this.game.meta.settings.notation), 'rgba(255,255,255,0.9)');
+          break;
+        case 'build':
+          this.sfx.build();
+          break;
+        case 'overdrive':
+          this.sfx.overdrive();
+          if (!calm) r.flash(0.18, '124,246,255');
+          break;
         case 'merge':
-          if (e.tier >= 5) this.ui.toast(`Tier ${roman(e.tier)} reached!`, 'gold');
+          this.sfx.merge(e.tier);
+          if (e.tier >= 5) {
+            this.ui.toast(`Tier ${roman(e.tier)} reached!`, 'gold');
+            r.shake(4 + e.tier);
+            if (!calm) r.flash(0.12 + e.tier * 0.015);
+          }
           break;
         case 'bossKill':
           this.ui.toast(`Boss destroyed on wave ${e.wave}`, 'good');
           this.haptic(60);
+          r.shake(12);
+          if (!calm) r.flash(0.2, '255,92,240');
           break;
         case 'breach':
           this.ui.toast(`Core breached! Back to wave ${e.toWave}`, 'bad');
           this.haptic([80, 40, 80]);
+          this.sfx.breach();
+          r.shake(16);
+          if (!calm) r.flash(0.35, '255,59,107');
           break;
         case 'achievement':
           this.ui.toast(`Achievement: ${e.name} (×1.02 damage)`, 'gold');
+          this.sfx.achievement();
           break;
         case 'wave':
-          if (e.wave % 10 === 0) this.ui.toast(`Wave ${e.wave}: boss incoming`, 'bad');
-          else if (e.rush) this.ui.toast(`Wave ${e.wave}: Rush! Faster enemies`, 'bad');
+          if (e.wave % 10 === 0) {
+            this.ui.toast(`Wave ${e.wave}: boss incoming`, 'bad');
+            this.sfx.bossWarning();
+          } else if (e.rush) {
+            this.ui.toast(`Wave ${e.wave}: Rush! Faster enemies`, 'bad');
+            this.sfx.rush();
+          }
           break;
         case 'collapse':
           this.ui.toast(`Collapsed for ${e.cores} Cores`, 'good');
+          this.sfx.collapse();
+          r.playCollapse();
+          this.haptic([30, 60, 120]);
           break;
       }
     }

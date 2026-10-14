@@ -48,6 +48,7 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setTextZoom(100);
+        s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(false);
 
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()

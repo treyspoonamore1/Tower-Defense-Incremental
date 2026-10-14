@@ -10,11 +10,11 @@
 <body>
 <div id="app">
   <header id="top">
-    <div class="res" title="Scrap"><i class="ico scrap"></i><b id="scrap">0</b></div>
+    <div class="res" title="Scrap"><i class="ico scrap"></i><div class="stack"><b id="scrap">0</b><small id="scrapRate"></small></div></div>
     <div class="res" title="Spin"><i class="ico spin"></i><b id="spin">0</b></div>
     <div class="res hidden" id="coresBox" title="Cores"><i class="ico core"></i><b id="cores">0</b></div>
     <div id="wavebox">
-      <div class="wave-label">Wave <b id="wave">1</b><span id="best"></span></div>
+      <div class="wave-label">Wave <b id="wave">1</b><span id="best"></span><span id="catchup" class="speed-badge hidden"></span></div>
       <div class="bar"><i id="waveBar"></i></div>
     </div>
     <div id="integrityBox" title="Core integrity">

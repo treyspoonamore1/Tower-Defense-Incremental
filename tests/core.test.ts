@@ -160,3 +160,47 @@ describe('enemy scaling', () => {
     expect(g.waveSpeedMult(5)).toBeCloseTo(1.04 * 1.4);
   });
 });
+
+describe('flow: faster resets', () => {
+  it('runs early waves at catch-up speed only after a Collapse', () => {
+    const g = new Game(undefined, 1);
+    g.meta.bestWave = 80;
+    expect(g.catchUpMult()).toBe(1);
+    g.meta.collapses = 1;
+    expect(g.catchUpMult()).toBe(3);
+    g.meta.collapses = 11;
+    expect(g.catchUpMult()).toBe(4);
+    g.skipWaves(45); // wave 46 >= half of 80
+    expect(g.catchUpMult()).toBe(1);
+  });
+
+  it('Head Start skips waves and pays their Scrap, capped at half the best wave', () => {
+    const g = new Game(undefined, 1);
+    g.meta.tree = { ignition: 1, salvagerights: 2, headstart: 3 };
+    g.meta.bestWave = 50;
+    expect(g.headStartWave()).toBe(25);
+    g.meta.bestWave = 200;
+    expect(g.headStartWave()).toBe(31);
+    g.run.maxWave = 60;
+    g.collapse();
+    expect(g.run.wave).toBe(31);
+    expect(g.run.lastBossCleared).toBe(30);
+    expect(g.run.scrap).toBeGreaterThan(g.headStartScrap(31) * 0.99);
+  });
+
+  it('builds a Scrap bonus from kill chains', () => {
+    const g = new Game(undefined, 1);
+    g.chain = 40;
+    expect(g.chainBonus()).toBeCloseTo(0.2);
+    g.chain = 1000;
+    expect(g.chainBonus()).toBe(0.5);
+  });
+
+  it('a strong board clears waves faster than the old 12 s floor', () => {
+    const g = new Game(undefined, 1);
+    g.meta.tree.ring3 = 1;
+    g.run.slots.forEach((ring) => ring.forEach((_, i) => { ring[i] = tower(g, i % 2 ? 'pulse' : 'arc', 10); }));
+    g.update(300);
+    expect(300 / (g.run.wave - 1)).toBeLessThan(9);
+  });
+});

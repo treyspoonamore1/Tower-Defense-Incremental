@@ -99,6 +99,22 @@ export const WAVE = {
   rushSpawnDuration: 4,
 };
 
+/** Flow tuning: how the early game speeds up so resets feel fast. */
+export const FLOW = {
+  catchUpBelow: 0.5, // waves below this fraction of your best wave run faster...
+  catchUpBase: 3, // ...at 3x game speed after the first Collapse,
+  catchUpPerCollapse: 0.1, // +0.1x per further Collapse,
+  catchUpMax: 6, // up to 6x.
+  sprintMult: 3, // enemies move 3x faster until they near the outermost tower ring
+  sprintMargin: 180, // au beyond the outermost open ring where sprinting stops
+  overlapShare: 0.15, // next wave starts when <=15% of the wave is left alive (no boss)
+  overlapDelay: 0.5,
+  clearDelay: 0.8,
+  chainWindow: 1.2, // seconds between kills to keep a chain going
+  chainBonusPer: 0.005, // +0.5% Scrap per chained kill...
+  chainBonusMax: 0.5, // ...up to +50%
+};
+
 /** Ring speed while the player is aiming a merge (holding or has selected a tower). */
 export const AIM_ORBIT_MULT = 0.15;
 
@@ -142,6 +158,7 @@ export const CORE_NODES: NodeDef[] = [
   { id: 'bearings', name: 'Bearings', branch: 'Engine', base: 2, growth: 2, max: 10, requires: [{ id: 'ignition', level: 1 }], desc: '+10% orbit speed per level' },
   { id: 'ring3', name: 'Third Ring', branch: 'Engine', base: 10, growth: 1, max: 1, requires: [{ id: 'bearings', level: 2 }], desc: 'Unlocks Ring 3 (8 slots)' },
   { id: 'salvagerights', name: 'Salvage Rights', branch: 'Industry', base: 2, growth: 2, max: 10, requires: [{ id: 'ignition', level: 1 }], desc: '×1.5 Scrap per level' },
+  { id: 'headstart', name: 'Head Start', branch: 'Industry', base: 20, growth: 3, max: 5, requires: [{ id: 'salvagerights', level: 2 }], desc: 'Runs start 10 waves later per level (up to half your best wave), with the Scrap those waves would pay' },
   { id: 'blueprints', name: 'Blueprints', branch: 'Industry', base: 25, growth: 5, max: 4, requires: [{ id: 'salvagerights', level: 3 }], desc: 'Built towers start 1 tier higher per level' },
   { id: 'autobuild', name: 'Auto-Build', branch: 'Automation', base: 5, growth: 1, max: 1, requires: [{ id: 'ignition', level: 1 }], desc: 'Builds a tower every 2 s when affordable' },
   { id: 'automerge', name: 'Auto-Merge', branch: 'Automation', base: 20, growth: 1, max: 1, requires: [{ id: 'autobuild', level: 1 }], desc: 'Merges the lowest matching pair every second' },
@@ -154,9 +171,9 @@ export interface MilestoneDef {
 }
 
 export const MILESTONES: MilestoneDef[] = [
-  { collapses: 1, desc: 'Start each run with 100 Scrap' },
+  { collapses: 1, desc: 'Start each run with 100 Scrap, and replay early waves at 3× speed (Catch-up)' },
   { collapses: 3, desc: 'Bulk build: ×5 and Max' },
-  { collapses: 5, desc: 'Start each run with a random tier III tower' },
+  { collapses: 5, desc: 'Start each run with a starter kit of towers, growing with Collapses and your best tier' },
   { collapses: 10, desc: 'Keep 10% of Spin upgrade levels on Collapse' },
 ];
 

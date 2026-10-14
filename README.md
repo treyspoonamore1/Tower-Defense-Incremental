@@ -38,13 +38,19 @@ Optional: with USB debugging on, `adb install -r core-breach.apk` works too.
   - **Tap** a tower, then tap one of its glowing matches.
   - Tap a tower and press **Merge with match** on its card.
 - Drag a tower to an empty slot to move it. **Tap the core** for Overdrive (rings spin 3×).
+- **Kill chains:** kills in quick succession build a Chain counter worth up to +50% Scrap.
+- **Faster resets:** after your first Collapse, waves below half your best run at 3× speed
+  (Catch-up, rising with more Collapses). The **Head Start** node starts runs up to 50 waves in,
+  and from 5 Collapses you begin each run with a starter kit of towers.
+- Enemies sprint across the empty outer arena, and the next wave starts as soon as only a few
+  stragglers are left.
 - Enemies get 1% faster every wave (up to 2.5×). Every 5th wave that isn't a boss wave is a
   **Rush**: enemies are 40% faster and arrive twice as quickly.
 - Spend Scrap and Spin in **Upgrades**. Reach **wave 50** and **Collapse** for Cores, then buy
   permanent upgrades, a third ring, the Mortar and automation in the **Core** tab.
 - The game earns Scrap and Spin at half rate while closed (up to 8 hours).
-- Settings (Stats tab) has export/import of your save and a debug panel (extra currency,
-  skip waves, game speed).
+- Settings (Stats tab): sound, vibration, optional damage numbers, reduce motion, save
+  export/import, and a debug panel (extra currency, skip waves, game speed).
 
 ## Development
 
@@ -65,7 +71,8 @@ in any browser. `npm run build` also copies it into the Android app's assets.
 | Path | What it is |
 | --- | --- |
 | `src/core/` | Pure game logic with no DOM: data (`defs.ts`), simulation (`game.ts`), save state, formatting |
-| `src/render/` | Canvas renderer and cached neon sprites |
+| `src/render/` | Canvas renderer, cached neon sprites and effects (shake, pickups, Collapse animation) |
+| `src/audio/` | Sound effects, synthesized with WebAudio (no audio files) |
 | `src/ui/` | DOM panels, touch input (drag to merge) |
 | `tools/build.mjs` | esbuild bundle → single `dist/index.html` |
 | `tools/sim.ts` | Balance simulator, also run in CI |

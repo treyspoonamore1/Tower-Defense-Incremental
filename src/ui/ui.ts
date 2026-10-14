@@ -267,7 +267,9 @@ export class Ui {
       <div class="settings">
         <button class="btn small" data-act="notation">Numbers: ${s.notation === 'letters' ? '1.5M' : '1.5e6'}</button>
         <button class="btn small ${s.reduceMotion ? 'on' : ''}" data-act="motion">Reduce motion: ${s.reduceMotion ? 'on' : 'off'}</button>
+        <button class="btn small ${s.sound ? 'on' : ''}" data-act="sound">Sound: ${s.sound ? 'on' : 'off'}</button>
         <button class="btn small ${s.haptics ? 'on' : ''}" data-act="haptics">Vibration: ${s.haptics ? 'on' : 'off'}</button>
+        <button class="btn small ${s.damageNumbers ? 'on' : ''}" data-act="dmgnum">Damage numbers: ${s.damageNumbers ? 'on' : 'off'}</button>
         <button class="btn small" data-act="export">Export save</button>
         <button class="btn small" data-act="import">Import save</button>
         <button class="btn small" data-act="reset">Reset game</button>
@@ -291,6 +293,8 @@ export class Ui {
       case 'notation': s.notation = s.notation === 'letters' ? 'scientific' : 'letters'; break;
       case 'motion': s.reduceMotion = !s.reduceMotion; break;
       case 'haptics': s.haptics = !s.haptics; break;
+      case 'sound': s.sound = !s.sound; break;
+      case 'dmgnum': s.damageNumbers = !s.damageNumbers; break;
       case 'debug': s.debug = !s.debug; break;
       case 'export': this.showExport(); return;
       case 'import': this.showImport(); return;
@@ -306,10 +310,25 @@ export class Ui {
 
   // ---------- Top bar, goal, card ----------
 
+  private lastEarned = 0;
+  private scrapRate = 0;
+
   update(dt: number): void {
     const g = this.game;
     const run = g.run;
     $('scrap').textContent = this.n(run.scrap);
+    // Smoothed Scrap per real second (run.scrapEarned resets on Collapse).
+    const delta = run.scrapEarned - this.lastEarned;
+    this.lastEarned = run.scrapEarned;
+    if (delta >= 0 && dt > 0) this.scrapRate += (delta / dt - this.scrapRate) * Math.min(1, dt / 3);
+    $('scrapRate').textContent = this.scrapRate >= 0.05 ? `+${this.n(this.scrapRate)}/s` : '';
+    const catchUp = g.catchUpMult();
+    const badge = $('catchup');
+    badge.classList.toggle('hidden', catchUp <= 1);
+    if (catchUp > 1) {
+      badge.textContent = `×${catchUp.toFixed(1).replace(/\.0$/, '')}`;
+      badge.title = `Catch-up speed until wave ${Math.ceil(g.meta.bestWave * 0.5)}`;
+    }
     $('spin').textContent = this.n(run.spin);
     const showCores = g.meta.collapses > 0 || g.meta.cores > 0;
     $('coresBox').classList.toggle('hidden', !showCores);
@@ -360,6 +379,10 @@ export class Ui {
     }
     goal.classList.toggle('tutorial', !!tutorial);
     if (tutorial) { goal.innerHTML = tutorial; return; }
+    if (g.catchUpMult() > 1) {
+      goal.innerHTML = `Catch-up: <b>×${g.catchUpMult().toFixed(1).replace(/\.0$/, '')} speed</b> until wave ${Math.ceil(g.meta.bestWave * 0.5)}`;
+      return;
+    }
     if (!g.canCollapse()) {
       goal.innerHTML = `Next goal: <b>wave ${COLLAPSE_WAVE}</b> unlocks Collapse (best ${g.run.maxWave})`;
     } else {

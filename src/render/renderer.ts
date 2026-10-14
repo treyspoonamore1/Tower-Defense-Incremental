@@ -41,6 +41,8 @@ export class View {
 }
 
 interface Star { x: number; y: number; r: number; a: number }
+interface Pickup { sx: number; sy: number; t: number; life: number; delay: number }
+interface FloatText { x: number; y: number; text: string; color: string; t: number; life: number; size: number }
 
 export class Renderer {
   ctx: CanvasRenderingContext2D;
@@ -48,6 +50,16 @@ export class Renderer {
   dpr = 1;
   private stars: Star[] = [];
   private time = 0;
+  private shakeAmt = 0;
+  private flashAlpha = 0;
+  private flashColor = '255,255,255';
+  private collapseT = -1;
+  private pickups: Pickup[] = [];
+  private texts: FloatText[] = [];
+  /** Where Scrap pickups fly to, in canvas css px (the Scrap counter, above the canvas). */
+  pickupTarget = { x: 30, y: -20 };
+  /** Called whenever a Scrap pickup reaches the counter. */
+  onPickup: () => void = () => undefined;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d', { alpha: false })!;
@@ -69,11 +81,41 @@ export class Renderer {
     return Math.max(11, Math.min(20, 46 * this.view.scale));
   }
 
+  shake(amount: number): void {
+    this.shakeAmt = Math.max(this.shakeAmt, amount);
+  }
+
+  flash(alpha: number, rgb = '255,255,255'): void {
+    this.flashAlpha = Math.max(this.flashAlpha, alpha);
+    this.flashColor = rgb;
+  }
+
+  /** The core-implosion animation that plays over a Collapse. */
+  playCollapse(): void {
+    this.collapseT = 0;
+  }
+
+  /** A Scrap diamond that flies from a world position to the Scrap counter. */
+  addPickup(wx: number, wy: number): void {
+    if (this.pickups.length >= 40) return;
+    this.pickups.push({ sx: this.view.sx(wx), sy: this.view.sy(wy), t: 0, life: 0.55, delay: Math.random() * 0.12 });
+  }
+
+  addText(wx: number, wy: number, text: string, color: string, size = 11): void {
+    if (this.texts.length >= 40) this.texts.shift();
+    this.texts.push({ x: this.view.sx(wx) + (Math.random() - 0.5) * 10, y: this.view.sy(wy), text, color, t: 0, life: 0.7, size });
+  }
+
   draw(game: Game, ui: UiState, dt: number, reduceMotion: boolean): void {
     this.time += dt;
     const { ctx, view } = this;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.drawBackground(game);
+    if (this.shakeAmt > 0.2 && !reduceMotion) {
+      const a = this.shakeAmt;
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, (Math.random() - 0.5) * a * this.dpr, (Math.random() - 0.5) * a * this.dpr);
+    }
+    this.shakeAmt *= Math.pow(0.0015, dt);
 
     const s = view.scale;
     const cx = view.cx;
@@ -154,6 +196,7 @@ export class Renderer {
     this.drawTowers(game, ui);
     this.drawProjectiles(game);
     this.drawEffects(game, reduceMotion);
+    this.drawTexts(dt);
 
     // Dragged tower follows the finger; a line shows which match it will snap into.
     if (ui.drag && dragTower) {
@@ -174,6 +217,109 @@ export class Renderer {
       ctx.globalAlpha = 0.9;
       ctx.drawImage(spr, ui.drag.x - size / 2, ui.drag.y - size / 2, size, size);
       ctx.globalAlpha = 1;
+    }
+
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.drawChain(game);
+    this.drawPickups(dt);
+    this.drawCollapse(dt);
+    if (this.flashAlpha > 0.01) {
+      ctx.fillStyle = `rgba(${this.flashColor}, ${this.flashAlpha})`;
+      ctx.fillRect(0, 0, view.width, view.height);
+      this.flashAlpha *= Math.pow(0.002, dt);
+    }
+  }
+
+  private drawPickups(dt: number): void {
+    const { ctx } = this;
+    const tx = this.pickupTarget.x;
+    const ty = this.pickupTarget.y;
+    for (let i = this.pickups.length - 1; i >= 0; i--) {
+      const p = this.pickups[i];
+      if (p.delay > 0) { p.delay -= dt; continue; }
+      p.t += dt;
+      const f = Math.min(1, p.t / p.life);
+      if (f >= 1) {
+        this.pickups.splice(i, 1);
+        this.onPickup();
+        continue;
+      }
+      // Ease in, with a little arc so pickups don't fly in straight lines.
+      const e = f * f * (3 - 2 * f);
+      const x = p.sx + (tx - p.sx) * e + Math.sin(f * Math.PI) * 30 * (p.sx > tx ? 1 : -1);
+      const y = p.sy + (ty - p.sy) * e;
+      const r = 4.5 * (1 - f * 0.4);
+      ctx.fillStyle = '#ffc857';
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);
+      ctx.lineTo(x + r, y);
+      ctx.lineTo(x, y + r);
+      ctx.lineTo(x - r, y);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  private drawTexts(dt: number): void {
+    const { ctx } = this;
+    ctx.textAlign = 'center';
+    for (let i = this.texts.length - 1; i >= 0; i--) {
+      const t = this.texts[i];
+      t.t += dt;
+      if (t.t >= t.life) { this.texts.splice(i, 1); continue; }
+      const f = t.t / t.life;
+      ctx.globalAlpha = 1 - f * f;
+      ctx.fillStyle = t.color;
+      ctx.font = `600 ${t.size}px system-ui, sans-serif`;
+      ctx.fillText(t.text, t.x, t.y - f * 22);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private drawChain(game: Game): void {
+    if (game.chain < 10) return;
+    const { ctx, view } = this;
+    const pulse = 1 + Math.max(0, game.chainTimer - 0.9) * 0.6;
+    const size = Math.min(26, 14 + game.chain / 12) * pulse;
+    ctx.textAlign = 'center';
+    ctx.font = `800 ${size}px system-ui, sans-serif`;
+    ctx.fillStyle = `rgba(255, 200, 87, ${Math.min(1, game.chainTimer / 0.4)})`;
+    ctx.fillText(`Chain ×${game.chain}`, view.width / 2, view.height - 34);
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255, 220, 150, 0.8)';
+    ctx.fillText(`+${Math.round(game.chainBonus() * 100)}% Scrap`, view.width / 2, view.height - 18);
+  }
+
+  private drawCollapse(dt: number): void {
+    if (this.collapseT < 0) return;
+    const { ctx, view } = this;
+    this.collapseT += dt;
+    const t = this.collapseT;
+    const maxR = Math.hypot(view.width, view.height) / 2;
+    if (t < 1) {
+      // Rings of light pull inward to the core.
+      for (let i = 0; i < 5; i++) {
+        const f = (t * 1.6 + i * 0.2) % 1;
+        const r = maxR * (1 - f);
+        ctx.beginPath();
+        ctx.arc(view.cx, view.cy, Math.max(1, r), 0, TAU);
+        ctx.strokeStyle = `rgba(124, 246, 255, ${0.7 * f})`;
+        ctx.lineWidth = 2 + f * 4;
+        ctx.stroke();
+      }
+      ctx.fillStyle = `rgba(2, 4, 12, ${t * 0.6})`;
+      ctx.fillRect(0, 0, view.width, view.height);
+    } else if (t < 1.8) {
+      const f = (t - 1) / 0.8;
+      ctx.fillStyle = `rgba(230, 255, 255, ${1 - f})`;
+      ctx.fillRect(0, 0, view.width, view.height);
+      ctx.beginPath();
+      ctx.arc(view.cx, view.cy, maxR * f, 0, TAU);
+      ctx.strokeStyle = `rgba(77, 255, 195, ${1 - f})`;
+      ctx.lineWidth = 6;
+      ctx.stroke();
+    } else {
+      this.collapseT = -1;
     }
   }
 
@@ -279,6 +425,28 @@ export class Renderer {
     }
   }
 
+  /** A fading arc behind each tower along its orbit; longer during Overdrive. */
+  private drawTrail(game: Game, ring: number, index: number, type: keyof typeof TOWERS): void {
+    const { ctx, view } = this;
+    const def = RINGS[ring];
+    const a = game.run.ringAngle[ring] + (index * TAU) / def.slots;
+    const span = game.run.overdriveTime > 0 ? 0.9 : 0.4;
+    const radius = def.radius * view.scale;
+    ctx.strokeStyle = TOWERS[type].color;
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 4; k++) {
+      const a0 = a - def.dir * span * (k / 4);
+      const a1 = a - def.dir * span * ((k + 1) / 4);
+      ctx.globalAlpha = 0.32 * (1 - k / 4);
+      ctx.lineWidth = 3 * (1 - k / 5);
+      ctx.beginPath();
+      ctx.arc(view.cx, view.cy, radius, Math.min(a0, a1), Math.max(a0, a1));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineCap = 'butt';
+  }
+
   private drawTowers(game: Game, ui: UiState): void {
     const { ctx, view } = this;
     const r = this.towerRadius();
@@ -310,6 +478,7 @@ export class Renderer {
           ctx.fillStyle = hover ? 'rgba(160, 255, 200, 0.35)' : 'rgba(160, 255, 200, 0.16)';
           ctx.fill();
         }
+        if (!dragging) this.drawTrail(game, ring, i, t.type);
         const spr = towerSprite(t.type, t.tier, r * this.dpr);
         const size = spr.width / this.dpr;
         ctx.save();
